@@ -2,9 +2,10 @@ import Link from "next/link";
 import Image from "next/image";
 import { ReactNode } from "react";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";   // ✅ import headers
 import { isAuthenticated } from "@/lib/actions/auth.action";
 
-import "./globals.css"; // ✅ make sure global styles are imported here
+import "./globals.css";
 
 export default async function RootLayout({
                                              children,
@@ -13,8 +14,20 @@ export default async function RootLayout({
 }) {
     const isUserAuthenticated = await isAuthenticated();
 
-// ✅ Redirect only if user is NOT logged in AND not already on /sign-in
-    if (!isUserAuthenticated && !children?.toString().includes("sign-in")) {
+    // ✅ Await headers() properly
+    const headersList = await headers();
+    const currentPath =
+        headersList.get("x-invoke-path") ||
+        headersList.get("referer") ||
+        "/";
+
+    const authPages = ["/sign-in", "/sign-up"];
+
+    // ✅ Only redirect if user is not logged in AND not already on auth pages
+    if (
+        !isUserAuthenticated &&
+        !authPages.some((p) => currentPath.includes(p))
+    ) {
         redirect("/sign-in");
     }
 
