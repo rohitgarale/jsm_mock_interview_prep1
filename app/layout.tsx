@@ -13,8 +13,8 @@ export default async function RootLayout({
 }) {
     const isUserAuthenticated = await isAuthenticated();
 
-    // ✅ If user is not logged in, send them to sign-in
-    if (!isUserAuthenticated) {
+// ✅ Redirect only if user is NOT logged in AND not already on /sign-in
+    if (!isUserAuthenticated && !children?.toString().includes("sign-in")) {
         redirect("/sign-in");
     }
 
