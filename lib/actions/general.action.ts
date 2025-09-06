@@ -67,7 +67,9 @@ export async function createFeedback(params: CreateFeedbackParams) {
 }
 
 export async function getInterviewById(id: string): Promise<Interview | null> {
-    const interview = await db.collection("interviews").doc(id).get();
+    const interview = await db.collection("interviews")
+        .doc(id)
+        .get();
 
     return interview.data() as Interview | null;
 }
@@ -122,4 +124,24 @@ export async function getInterviewsByUserId(
         id: doc.id,
         ...doc.data(),
     })) as Interview[];
+}
+
+export async function createInterview(userId: string, data?: Partial<Interview>): Promise<Interview> {
+    if (!userId) {
+        throw new Error("❌ Cannot create interview without userId");
+    }
+
+    const interviewRef = await db.collection("interviews").add({
+        userId,
+        createdAt: new Date(),
+        ...data, // allow passing extra fields like title, jobRole, etc.
+    });
+
+    const interviewDoc = await interviewRef.get();
+
+    return {
+        id: interviewDoc.id,
+        ...interviewDoc.data(),
+    } as Interview;
+
 }

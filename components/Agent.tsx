@@ -49,15 +49,22 @@ const Agent = ({
                 const newMessage = { role: message.role, content: message.transcript };
                 setMessages((prev) => [...prev, newMessage]);
             }
+
+            if (message.type === "add-message") {
+                const newMessage = { role: "assistant", content: (message as any).message?.content || "" };
+                if (newMessage.content) {
+                    setMessages((prev) => [...prev, newMessage]);
+                }
+            }
         };
 
         const onSpeechStart = () => {
-            console.log("speech start");
+            console.log("speech started");
             setIsSpeaking(true);
         };
 
         const onSpeechEnd = () => {
-            console.log("speech end");
+            console.log("speech ended");
             setIsSpeaking(false);
         };
 
@@ -68,16 +75,16 @@ const Agent = ({
         vapi.on("call-start", onCallStart);
         vapi.on("call-end", onCallEnd);
         vapi.on("message", onMessage);
-        vapi.on("speech-start", onSpeechStart);
-        vapi.on("speech-end", onSpeechEnd);
+        vapi.on("speech-started", onSpeechStart);
+        vapi.on("speech-ended", onSpeechEnd);
         vapi.on("error", onError);
 
         return () => {
             vapi.off("call-start", onCallStart);
             vapi.off("call-end", onCallEnd);
             vapi.off("message", onMessage);
-            vapi.off("speech-start", onSpeechStart);
-            vapi.off("speech-end", onSpeechEnd);
+            vapi.off("speech-started", onSpeechStart);
+            vapi.off("speech-ended", onSpeechEnd);
             vapi.off("error", onError);
         };
     }, []);
@@ -127,9 +134,7 @@ const Agent = ({
         } else {
             let formattedQuestions = "";
             if (questions) {
-                formattedQuestions = questions
-                    .map((question) => `- ${question}`)
-                    .join("\n");
+                formattedQuestions = questions.map((question) => `- ${question}`).join("\n");
             }
 
             await vapi.start(interviewer, {
