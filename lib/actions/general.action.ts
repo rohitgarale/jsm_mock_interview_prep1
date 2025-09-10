@@ -3,9 +3,17 @@
 import { generateObject } from "ai";
 import { google } from "@ai-sdk/google";
 
-import { db } from "@/firebase/admin";
+import { db, auth } from "@/firebase/admin"; // ✅ ensure `admin` is exported in firebase/admin
 import { feedbackSchema } from "@/constants";
 
+// ============================================================================
+// HELPER: Firestore-safe timestamps
+// ============================================================================
+const now = () => admin.firestore.Timestamp.now();
+
+// ============================================================================
+// CREATE FEEDBACK
+// ============================================================================
 export async function createFeedback(params: CreateFeedbackParams) {
     const { interviewId, userId, transcript, feedbackId } = params;
 
@@ -46,7 +54,7 @@ export async function createFeedback(params: CreateFeedbackParams) {
             strengths: object.strengths,
             areasForImprovement: object.areasForImprovement,
             finalAssessment: object.finalAssessment,
-            createdAt: new Date().toISOString(),
+            createdAt: now(), // ✅ FIX
         };
 
         let feedbackRef;
@@ -66,82 +74,250 @@ export async function createFeedback(params: CreateFeedbackParams) {
     }
 }
 
+// ============================================================================
+// GET INTERVIEW BY ID
+// ============================================================================
 export async function getInterviewById(id: string): Promise<Interview | null> {
-    const interview = await db.collection("interviews")
-        .doc(id)
-        .get();
+    if (!id || typeof id !== "string" || id.trim() === "") {
+        console.error("❌ Invalid interview ID provided:", id);
+        return null;
+    }
 
-    return interview.data() as Interview | null;
+    const cleanId = id.trim();
+
+    try {
+        console.log("🔍 Fetching interview with ID:", cleanId);
+
+        const interview = await db.collection("interviews").doc(cleanId).get();
+
+        if (!interview.exists) {
+            console.log("⚠️ Interview not found:", cleanId);
+            return null;
+        }
+
+        const data = interview.data();
+        console.log("✅ Interview found:", cleanId);
+
+        return {
+            id: interview.id,
+            ...data,
+        } as Interview;
+    } catch (error) {
+        console.error("❌ Error fetching interview:", error);
+        return null;
+    }
 }
 
+// ============================================================================
+// GET FEEDBACK BY INTERVIEW ID
+// ============================================================================
 export async function getFeedbackByInterviewId(
     params: GetFeedbackByInterviewIdParams
 ): Promise<Feedback | null> {
     const { interviewId, userId } = params;
 
-    const querySnapshot = await db
-        .collection("feedback")
-        .where("interviewId", "==", interviewId)
-        .where("userId", "==", userId)
-        .limit(1)
-        .get();
+    try {
+        const querySnapshot = await db
+            .collection("feedback")
+            .where("interviewId", "==", interviewId)
+            .where("userId", "==", userId)
+            .limit(1)
+            .get();
 
-    if (querySnapshot.empty) return null;
+        if (querySnapshot.empty) return null;
 
-    const feedbackDoc = querySnapshot.docs[0];
-    return { id: feedbackDoc.id, ...feedbackDoc.data() } as Feedback;
+        const feedbackDoc = querySnapshot.docs[0];
+        return { id: feedbackDoc.id, ...feedbackDoc.data() } as Feedback;
+    } catch (error) {
+        console.error("Error fetching feedback:", error);
+        return null;
+    }
 }
 
+// ============================================================================
+// GET LATEST INTERVIEWS
+// ============================================================================
 export async function getLatestInterviews(
     params: GetLatestInterviewsParams
 ): Promise<Interview[] | null> {
     const { userId, limit = 20 } = params;
 
-    const interviews = await db
-        .collection("interviews")
-        .orderBy("createdAt", "desc")
-        .where("finalized", "==", true)
-        .where("userId", "!=", userId)
-        .limit(limit)
-        .get();
+    try {
+        const interviews = await db
+            .collection("interviews")
+            .where("finalized", "==", true)
+            .where("userId", "!=", userId)
+            .orderBy("userId")
+            .orderBy("createdAt", "desc")
+            .limit(limit)
+            .get();
 
-    return interviews.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-    })) as Interview[];
+        return interviews.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+        })) as Interview[];
+    } catch (error) {
+        console.error("Error fetching latest interviews:", error);
+
+        try {
+            const interviews = await db
+                .collection("interviews")
+                .where("finalized", "==", true)
+                .orderBy("createdAt", "desc")
+                .limit(limit * 2)
+                .get();
+
+            const filtered = interviews.docs
+                .filter((doc) => doc.data().userId !== userId)
+                .slice(0, limit)
+                .map((doc) => ({
+                    id: doc.id,
+                    ...doc.data(),
+                }));
+
+            return filtered as Interview[];
+        } catch (fallbackError) {
+            console.error("Fallback query also failed:", fallbackError);
+            return [];
+        }
+    }
 }
 
+// ============================================================================
+// GET INTERVIEWS BY USER
+// ============================================================================
 export async function getInterviewsByUserId(
     userId: string
 ): Promise<Interview[] | null> {
-    const interviews = await db
-        .collection("interviews")
-        .where("userId", "==", userId)
-        .orderBy("createdAt", "desc")
-        .get();
+    try {
+        const interviews = await db
+            .collection("interviews")
+            .where("userId", "==", userId)
+            .orderBy("createdAt", "desc")
+            .get();
 
-    return interviews.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-    })) as Interview[];
+        return interviews.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+        })) as Interview[];
+    } catch (error) {
+        console.error("Error fetching user interviews:", error);
+        return [];
+    }
 }
 
-export async function createInterview(userId: string, data?: Partial<Interview>): Promise<Interview> {
+// ============================================================================
+// CREATE INTERVIEW (basic)
+// ============================================================================
+export async function createInterview(
+    userId: string,
+    data?: Partial<Interview>
+): Promise<Interview> {
     if (!userId) {
         throw new Error("❌ Cannot create interview without userId");
     }
 
-    const interviewRef = await db.collection("interviews").add({
-        userId,
-        createdAt: new Date(),
-        ...data, // allow passing extra fields like title, jobRole, etc.
-    });
+    try {
+        const interviewRef = await db.collection("interviews").add({
+            userId,
+            createdAt: now(), // ✅ FIX
+            updatedAt: now(), // ✅ FIX
+            finalized: false,
+            ...data,
+        });
 
-    const interviewDoc = await interviewRef.get();
+        const interviewDoc = await interviewRef.get();
 
-    return {
-        id: interviewDoc.id,
-        ...interviewDoc.data(),
-    } as Interview;
+        return {
+            id: interviewDoc.id,
+            ...interviewDoc.data(),
+        } as Interview;
+    } catch (error) {
+        console.error("Error creating interview:", error);
+        throw new Error("Failed to create interview");
+    }
+}
 
+// ============================================================================
+// CREATE ENHANCED INTERVIEW
+// ============================================================================
+export async function createEnhancedInterview(
+    userId: string,
+    interviewData: {
+        title: string;
+        jobRole: string;
+        category?: string;
+        difficulty?: "Easy" | "Medium" | "Hard";
+        tags?: string[];
+        estimatedDuration?: number;
+        isPublic?: boolean;
+        role?: string;
+        type?: string;
+        techstack?: string;
+    }
+): Promise<{ success: boolean; interviewId?: string; error?: string }> {
+    if (!userId) {
+        return { success: false, error: "UserId is required" };
+    }
+
+    try {
+        console.log("🔄 Creating enhanced interview for userId:", userId);
+
+        const tags =
+            interviewData.tags ||
+            (interviewData.techstack
+                ? interviewData.techstack.split(",").map((t) => t.trim())
+                : []);
+
+        const interview = {
+            userId,
+            title: interviewData.title,
+            jobRole: interviewData.jobRole,
+            category: interviewData.category || interviewData.type || "Technical",
+            difficulty: interviewData.difficulty || "Medium",
+            tags,
+            estimatedDuration: interviewData.estimatedDuration || 30,
+            finalized: false,
+            isPublic: interviewData.isPublic || false,
+            createdAt: now(), // ✅ FIX
+            updatedAt: now(), // ✅ FIX
+            role: interviewData.role || interviewData.jobRole,
+            type: interviewData.type || interviewData.category || "Technical",
+            techstack: interviewData.techstack || tags.join(", "),
+        };
+
+        const interviewRef = await db.collection("interviews").add(interview);
+        console.log("✅ Enhanced interview created with ID:", interviewRef.id);
+
+        return { success: true, interviewId: interviewRef.id };
+    } catch (error) {
+        console.error("❌ Error creating enhanced interview:", error);
+        return { success: false, error: "Failed to create interview" };
+    }
+}
+
+// ============================================================================
+// FINALIZE INTERVIEW
+// ============================================================================
+export async function finalizeInterview(
+    interviewId: string,
+    updates?: Partial<Interview>
+): Promise<{ success: boolean; error?: string }> {
+    if (!interviewId) {
+        return { success: false, error: "Interview ID is required" };
+    }
+
+    try {
+        await db.collection("interviews").doc(interviewId).update({
+            finalized: true,
+            updatedAt: now(), // ✅ FIX
+            ...updates,
+        });
+
+        console.log("✅ Interview finalized:", interviewId);
+        return { success: true };
+    } catch (error) {
+        console.error("❌ Error finalizing interview:", error);
+        return { success: false, error: "Failed to finalize interview" };
+    }
 }

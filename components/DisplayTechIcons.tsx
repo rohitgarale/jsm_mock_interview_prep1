@@ -1,9 +1,16 @@
 import Image from "next/image";
-
 import { cn, getTechLogos } from "@/lib/utils";
+
+type TechIconProps = {
+    techStack?: string[];
+};
 
 const DisplayTechIcons = async ({ techStack }: TechIconProps) => {
     const techIcons = await getTechLogos(techStack);
+
+    if (!techIcons.length) {
+        return null; // render nothing if no tech stack provided
+    }
 
     return (
         <div className="flex flex-row">
@@ -16,7 +23,6 @@ const DisplayTechIcons = async ({ techStack }: TechIconProps) => {
                     )}
                 >
                     <span className="tech-tooltip">{tech}</span>
-
                     <Image
                         src={url}
                         alt={tech}

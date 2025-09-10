@@ -1,6 +1,7 @@
 import Agent from "@/components/Agent";
 import { getCurrentUser } from "@/lib/actions/auth.action";
 
+
 const Page = async () => {
     const user = await getCurrentUser();
 
@@ -18,4 +19,7 @@ const Page = async () => {
     );
 };
 
+
+
+// ✅ only one default export
 export default Page;

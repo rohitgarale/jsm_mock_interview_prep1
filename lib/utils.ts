@@ -8,23 +8,41 @@ export function cn(...inputs: ClassValue[]) {
 
 const techIconBaseURL = "https://cdn.jsdelivr.net/gh/devicons/devicon/icons";
 
-const normalizeTechName = (tech: string) => {
+/**
+ * Normalize a tech name (case-insensitive, strip ".js", spaces, etc.)
+ * Returns either a mapped value, the cleaned key, or "default".
+ */
+const normalizeTechName = (tech: string): string => {
+    if (!tech) return "default";
+
     const key = tech.toLowerCase().replace(/\.js$/, "").replace(/\s+/g, "");
-    return mappings[key as keyof typeof mappings];
+
+    return mappings[key as keyof typeof mappings] || key || "default";
 };
 
+/**
+ * Check if an icon URL exists.
+ */
 const checkIconExists = async (url: string) => {
     try {
         const response = await fetch(url, { method: "HEAD" });
-        return response.ok; // Returns true if the icon exists
+        return response.ok;
     } catch {
         return false;
     }
 };
 
-export const getTechLogos = async (techArray: string[]) => {
+/**
+ * Build an array of logos (with fallback if URL missing).
+ */
+export const getTechLogos = async (techArray?: string[]) => {
+    if (!Array.isArray(techArray) || techArray.length === 0) {
+        return [];
+    }
+
     const logoURLs = techArray.map((tech) => {
         const normalized = normalizeTechName(tech);
+
         return {
             tech,
             url: `${techIconBaseURL}/${normalized}/${normalized}-original.svg`,
@@ -34,13 +52,16 @@ export const getTechLogos = async (techArray: string[]) => {
     const results = await Promise.all(
         logoURLs.map(async ({ tech, url }) => ({
             tech,
-            url: (await checkIconExists(url)) ? url : "/tech.svg",
+            url: (await checkIconExists(url)) ? url : "/tech.svg", // fallback local placeholder
         }))
     );
 
     return results;
 };
 
+/**
+ * Pick a random interview cover.
+ */
 export const getRandomInterviewCover = () => {
     const randomIndex = Math.floor(Math.random() * interviewCovers.length);
     return `/covers${interviewCovers[randomIndex]}`;

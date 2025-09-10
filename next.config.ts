@@ -8,11 +8,9 @@ const nextConfig = {
         // ✅ Ignore TypeScript errors during builds
         ignoreBuildErrors: true,
     },
-    experimental: {
-        allowedDevOrigins: ["http://192.168.56.1:3000"],
-    },
+
 };
 
 export default nextConfig;
-module.exports = nextConfig;
+
 
